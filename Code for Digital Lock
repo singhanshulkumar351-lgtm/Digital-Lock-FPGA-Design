@@ -1,0 +1,277 @@
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 11/08/2025 11:47:58 PM
+// Design Name: 
+// Module Name: digital_lock
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
+
+
+module digital_lock (
+    input wire clk,
+    input wire reset,
+    input wire [3:0] digit_in,        // Input digit 0-9
+    input wire enter_btn,              // Button to submit digit
+    input wire change_pwd_btn,         // Button to change password
+    output reg [15:0] led,            // Status LEDs
+    output reg [6:0] seg,             // 7-segment display
+    output reg [7:0] an,              // 7-segment anodes
+    output reg locked                  // Lock status (1=locked, 0=unlocked)
+);
+
+    // STATE DEFINITIONS
+ localparam [3:0] IDLE           = 4'd0;
+ localparam [3:0] DIGIT1         = 4'd1;
+ localparam [3:0] DIGIT2         = 4'd2;
+ localparam [3:0] DIGIT3         = 4'd3;
+ localparam [3:0] DIGIT4         = 4'd4;
+ localparam [3:0] CHECK_PASSWORD = 4'd5;
+ localparam [3:0] UNLOCKED       = 4'd6;
+ localparam [3:0] WRONG_PASSWORD = 4'd7;
+ localparam [3:0] LOCKED_OUT     = 4'd8;
+ 
+ reg [3:0] current_state, next_state;
+ 
+ // PASSWORD STORAGE
+ reg [3:0] password [0:3];
+ reg [3:0] entered_digits [0:3];
+ reg [1:0] attempt_count;
+ 
+ initial begin
+     password[0] = 4'd1;
+     password[1] = 4'd2;
+     password[2] = 4'd3;
+     password[3] = 4'd4;
+     attempt_count = 2'd0;
+ end
+ 
+ // SIMPLE BUTTON EDGE DETECTION
+ reg enter_btn_r1, enter_btn_r2;
+ wire enter_btn_rising;
+ 
+ always @(posedge clk or posedge reset) begin
+     if (reset) begin
+         enter_btn_r1 <= 1'b0;
+         enter_btn_r2 <= 1'b0;
+     end else begin
+         enter_btn_r1 <= enter_btn;
+         enter_btn_r2 <= enter_btn_r1;
+     end
+ end
+ 
+ assign enter_btn_rising = enter_btn_r1 && !enter_btn_r2;
+ 
+ // PASSWORD VERIFICATION
+ wire password_correct;
+ assign password_correct = (entered_digits[0] == password[0]) &&
+                          (entered_digits[1] == password[1]) &&
+                          (entered_digits[2] == password[2]) &&
+                          (entered_digits[3] == password[3]);
+ 
+ // STATE REGISTER
+ always @(posedge clk or posedge reset) begin
+     if (reset)
+         current_state <= IDLE;
+     else
+         current_state <= next_state;
+ end
+ 
+ // NEXT STATE LOGIC - SIMPLIFIED (NO TIMEOUT)
+ always @(*) begin
+     next_state = current_state;
+     
+     case (current_state)
+         IDLE: begin
+             if (enter_btn_rising)
+                 next_state = DIGIT1;
+         end
+         
+         DIGIT1: begin
+             if (enter_btn_rising)
+                 next_state = DIGIT2;
+         end
+         
+         DIGIT2: begin
+             if (enter_btn_rising)
+                 next_state = DIGIT3;
+         end
+         
+         DIGIT3: begin
+             if (enter_btn_rising)
+                 next_state = DIGIT4;
+         end
+         
+         DIGIT4: begin
+             // Automatically go to CHECK_PASSWORD after storing 4th digit
+             // No need to wait for another button press
+             next_state = CHECK_PASSWORD;
+         end
+         
+         CHECK_PASSWORD: begin
+             if (password_correct)
+                 next_state = UNLOCKED;
+             else if (attempt_count >= 2'd2)
+                 next_state = LOCKED_OUT;
+             else
+                 next_state = WRONG_PASSWORD;
+         end
+         
+         UNLOCKED: begin
+             // Stay unlocked (manual reset to test)
+             next_state = UNLOCKED;
+         end
+         
+         WRONG_PASSWORD: begin
+             // Manual return to IDLE for now
+             if (enter_btn_rising)
+                 next_state = IDLE;
+         end
+         
+         LOCKED_OUT: begin
+             // Manual return to IDLE for now
+             if (enter_btn_rising)
+                 next_state = IDLE;
+         end
+         
+         default: next_state = IDLE;
+     endcase
+ end
+ 
+ // DIGIT STORAGE - SIMPLIFIED
+ always @(posedge clk or posedge reset) begin
+     if (reset) begin
+         entered_digits[0] <= 4'd0;
+         entered_digits[1] <= 4'd0;
+         entered_digits[2] <= 4'd0;
+         entered_digits[3] <= 4'd0;
+     end else begin
+         if (current_state == IDLE && enter_btn_rising) begin
+             // When transitioning from IDLE to DIGIT1, store first digit
+             entered_digits[0] <= digit_in;
+         end
+         else if (current_state == DIGIT1 && enter_btn_rising) begin
+             // When transitioning from DIGIT1 to DIGIT2, store second digit
+             entered_digits[1] <= digit_in;
+         end
+         else if (current_state == DIGIT2 && enter_btn_rising) begin
+             // When transitioning from DIGIT2 to DIGIT3, store third digit
+             entered_digits[2] <= digit_in;
+         end
+         else if (current_state == DIGIT3 && enter_btn_rising) begin
+             // When transitioning from DIGIT3 to DIGIT4, store fourth digit
+             entered_digits[3] <= digit_in;
+         end
+         else if (current_state == UNLOCKED || current_state == WRONG_PASSWORD) begin
+             // Clear entered digits after checking
+             entered_digits[0] <= 4'd0;
+             entered_digits[1] <= 4'd0;
+             entered_digits[2] <= 4'd0;
+             entered_digits[3] <= 4'd0;
+         end
+     end
+ end
+ 
+ // ATTEMPT COUNTER
+ always @(posedge clk or posedge reset) begin
+     if (reset) begin
+         attempt_count <= 2'd0;
+     end else begin
+         if (current_state == UNLOCKED)
+             attempt_count <= 2'd0;
+         else if (current_state == WRONG_PASSWORD)
+             attempt_count <= attempt_count + 1;
+     end
+ end
+ 
+ // OUTPUT LOGIC
+ always @(posedge clk or posedge reset) begin
+     if (reset) begin
+         locked <= 1'b1;
+         led <= 16'h0000;
+     end else begin
+         case (current_state)
+             IDLE: begin
+                 locked <= 1'b1;
+                 led <= 16'h0001;  // State 0
+             end
+             
+             DIGIT1: begin
+                 locked <= 1'b1;
+                 led <= 16'h0002;  // State 1
+             end
+             
+             DIGIT2: begin
+                 locked <= 1'b1;
+                 led <= 16'h0004;  // State 2
+             end
+             
+             DIGIT3: begin
+                 locked <= 1'b1;
+                 led <= 16'h0008;  // State 3
+             end
+             
+             DIGIT4: begin
+                 locked <= 1'b1;
+                 led <= 16'h0010;  // State 4
+             end
+             
+             CHECK_PASSWORD: begin
+                 locked <= 1'b1;
+                 led <= 16'h0020;  // State 5
+             end
+             
+             UNLOCKED: begin
+                 locked <= 1'b0;
+                 led <= 16'hFFFF;  // All on = unlocked!
+             end
+             
+             WRONG_PASSWORD: begin
+                 locked <= 1'b1;
+                 led <= 16'h0040;  // State 7
+             end
+             
+             LOCKED_OUT: begin
+                 locked <= 1'b1;
+                 led <= 16'hAAAA;  // Alternating
+             end
+             
+             default: begin
+                 locked <= 1'b1;
+                 led <= 16'h0000;
+             end
+         endcase
+     end
+ end
+ 
+ // 7-SEGMENT DISPLAY (Simplified)
+ always @(*) begin
+     an = 8'b11111110;  // Only first digit
+     
+     case (entered_digits[0])
+         4'd0: seg = 7'b1000000;
+         4'd1: seg = 7'b1111001;
+         4'd2: seg = 7'b0100100;
+         4'd3: seg = 7'b0110000;
+         4'd4: seg = 7'b0011001;
+         4'd5: seg = 7'b0010010;
+         4'd6: seg = 7'b0000010;
+         4'd7: seg = 7'b1111000;
+         4'd8: seg = 7'b0000000;
+         4'd9: seg = 7'b0010000;
+         default: seg = 7'b1111111;
+     endcase
+ end
+endmodule
