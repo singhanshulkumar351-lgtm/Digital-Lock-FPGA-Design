@@ -1,0 +1,149 @@
+`timescale 1ns / 1ps
+
+module digital_lock_tb;
+    
+    reg clk;
+    reg reset;
+    reg [3:0] digit_in;
+    reg enter_btn;
+    reg change_pwd_btn;
+    wire [15:0] led;
+    wire [6:0] seg;
+    wire [7:0] an;
+    wire locked;
+    
+     // Instantiate digital lock
+       digital_lock uut (
+           .clk(clk),
+           .reset(reset),
+           .digit_in(digit_in),
+           .enter_btn(enter_btn),
+           .change_pwd_btn(change_pwd_btn),
+           .led(led),
+           .seg(seg),
+           .an(an),
+           .locked(locked)
+       );
+       
+       // Clock - 100MHz
+       initial begin
+           clk = 0;
+           forever #5 clk = ~clk;
+       end
+       
+       // Test
+       initial begin
+           $display("\n========================================");
+           $display("  DIGITAL LOCK DEBUG SIMULATION");
+           $display("========================================");
+           $display("Password: 1-2-3-4");
+           $display("NO TIMEOUT - Pure state machine test\n");
+           
+           // Init
+           reset = 1;
+           digit_in = 4'd0;
+           enter_btn = 0;
+           change_pwd_btn = 0;
+           #100;
+           
+           reset = 0;
+           $display("%0t: Reset released", $time);
+           #100;
+           
+           // TEST: Enter password digit by digit
+           $display("\n--- Entering Digit 1 ---");
+           digit_in = 4'd1;
+           #50;
+           $display("%0t: digit_in = %0d", $time, digit_in);
+           enter_btn = 1;
+           #20;
+           $display("%0t: enter_btn = 1", $time);
+           #100;
+           enter_btn = 0;
+           $display("%0t: enter_btn = 0", $time);
+           #200;
+           $display("%0t: State=%0d, LED=%h, entered[0]=%0d", 
+                    $time, uut.current_state, led, uut.entered_digits[0]);
+           
+           $display("\n--- Entering Digit 2 ---");
+           digit_in = 4'd2;
+           #50;
+           $display("%0t: digit_in = %0d", $time, digit_in);
+           enter_btn = 1;
+           #20;
+           $display("%0t: enter_btn = 1", $time);
+           #100;
+           enter_btn = 0;
+           $display("%0t: enter_btn = 0", $time);
+           #200;
+           $display("%0t: State=%0d, LED=%h, entered[1]=%0d", 
+                    $time, uut.current_state, led, uut.entered_digits[1]);
+           
+           $display("\n--- Entering Digit 3 ---");
+           digit_in = 4'd3;
+           #50;
+           $display("%0t: digit_in = %0d", $time, digit_in);
+           enter_btn = 1;
+           #20;
+           $display("%0t: enter_btn = 1", $time);
+           #100;
+           enter_btn = 0;
+           $display("%0t: enter_btn = 0", $time);
+           #200;
+           $display("%0t: State=%0d, LED=%h, entered[2]=%0d", 
+                    $time, uut.current_state, led, uut.entered_digits[2]);
+           
+           $display("\n--- Entering Digit 4 ---");
+           digit_in = 4'd4;
+           #50;
+           $display("%0t: digit_in = %0d", $time, digit_in);
+           enter_btn = 1;
+           #20;
+           $display("%0t: enter_btn = 1", $time);
+           #100;
+           enter_btn = 0;
+           $display("%0t: enter_btn = 0", $time);
+           #200;
+           $display("%0t: State=%0d, LED=%h, entered[3]=%0d", 
+                    $time, uut.current_state, led, uut.entered_digits[3]);
+           
+           #500;
+           
+           $display("\n========================================");
+           $display("FINAL RESULTS:");
+           $display("  State = %0d (should be 6=UNLOCKED)", uut.current_state);
+           $display("  Locked = %b (should be 0)", locked);
+           $display("  LED = %h (should be FFFF)", led);
+           $display("  Password = %0d-%0d-%0d-%0d", 
+                    uut.password[0], uut.password[1], 
+                    uut.password[2], uut.password[3]);
+           $display("  Entered  = %0d-%0d-%0d-%0d", 
+                    uut.entered_digits[0], uut.entered_digits[1], 
+                    uut.entered_digits[2], uut.entered_digits[3]);
+           
+           if (locked == 0) begin
+               $display("\n*** SUCCESS! Lock is UNLOCKED! ***");
+           end else begin
+               $display("\n*** FAILED! Lock is still locked ***");
+               $display("Debug info:");
+               $display("  enter_btn_r1 = %b", uut.enter_btn_r1);
+               $display("  enter_btn_r2 = %b", uut.enter_btn_r2);
+               $display("  enter_btn_rising = %b", uut.enter_btn_rising);
+           end
+           $display("========================================\n");
+           
+           #10000;
+           $finish;
+       end
+       
+       // Monitor every state change
+       always @(uut.current_state) begin
+           $display("%0t: >>> STATE CHANGED to %0d <<<", $time, uut.current_state);
+       end
+       
+       // Monitor edge detection
+       always @(posedge clk) begin
+           if (uut.enter_btn_rising)
+               $display("%0t: !!! BUTTON EDGE DETECTED !!!", $time);
+       end
+endmodule
